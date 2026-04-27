@@ -19,6 +19,49 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
 
+  void _showCreateFolderDialog(
+      BuildContext context, ExplorerProvider provider) {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nueva carpeta'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nombre de la carpeta',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isEmpty) return;
+              final ok = await provider.createFolder(name);
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content:
+                        Text(ok ? 'Carpeta creada' : 'Error al crear carpeta'),
+                    backgroundColor: ok ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Crear'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +89,11 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
         }
       },
       child: Scaffold(
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _showCreateFolderDialog(context, provider),
+          tooltip: 'Nueva carpeta',
+          child: const Icon(Icons.create_new_folder_outlined),
+        ),
         appBar: AppBar(
           title: _isSearching
               ? TextField(
@@ -171,7 +219,10 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => provider.init(),
+              onPressed: () {
+                provider.clearError();
+                provider.init();
+              },
               child: const Text('Reintentar'),
             ),
           ],
@@ -239,15 +290,30 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Encabezado
             ListTile(
-              leading: const Icon(Icons.info_outline),
+              leading: Icon(
+                FileTypes.getIcon(entity.path,
+                    isDirectory: entity is Directory),
+                color: FileTypes.getColor(entity.path,
+                    isDirectory: entity is Directory),
+              ),
               title: Text(name,
                   style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text(entity.path),
+              subtitle: Text(entity.path,
+                  style: const TextStyle(fontSize: 11),
+                  overflow: TextOverflow.ellipsis),
             ),
-            const Divider(),
+            const Divider(height: 1),
+
+            // Favorito
             ListTile(
-              leading: const Icon(Icons.star_outline),
+              leading: Icon(
+                provider.isFavorite(entity.path)
+                    ? Icons.star
+                    : Icons.star_outline,
+                color: provider.isFavorite(entity.path) ? Colors.amber : null,
+              ),
               title: Text(provider.isFavorite(entity.path)
                   ? 'Quitar de favoritos'
                   : 'Agregar a favoritos'),
@@ -256,8 +322,125 @@ class _ExplorerScreenState extends State<ExplorerScreen> {
                 Navigator.pop(ctx);
               },
             ),
+
+            // Renombrar
+            ListTile(
+              leading: const Icon(Icons.drive_file_rename_outline),
+              title: const Text('Renombrar'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showRenameDialog(context, entity, provider);
+              },
+            ),
+
+            // Eliminar
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title:
+                  const Text('Eliminar', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showDeleteDialog(context, entity, provider);
+              },
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showRenameDialog(
+    BuildContext context,
+    FileSystemEntity entity,
+    ExplorerProvider provider,
+  ) {
+    final name = entity.path.split('/').last;
+    final controller = TextEditingController(text: name);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Renombrar'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nuevo nombre',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isEmpty || newName == name) {
+                Navigator.pop(ctx);
+                return;
+              }
+              final ok = await provider.renameEntity(entity, newName);
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        ok ? 'Renombrado correctamente' : 'Error al renombrar'),
+                    backgroundColor: ok ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Renombrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteDialog(
+    BuildContext context,
+    FileSystemEntity entity,
+    ExplorerProvider provider,
+  ) {
+    final name = entity.path.split('/').last;
+    final isDir = entity is Directory;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar'),
+        content: Text(
+          isDir
+              ? '¿Eliminar la carpeta "$name" y todo su contenido?'
+              : '¿Eliminar el archivo "$name"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              final ok = await provider.deleteEntity(entity);
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        ok ? 'Eliminado correctamente' : 'Error al eliminar'),
+                    backgroundColor: ok ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            child: const Text('Eliminar'),
+          ),
+        ],
       ),
     );
   }

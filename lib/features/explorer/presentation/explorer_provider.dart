@@ -243,6 +243,90 @@ class ExplorerProvider extends ChangeNotifier {
     _isLoading = false;
     notifyListeners();
   }
+
+// ── Operaciones de archivos ────────────────────────────────
+
+  Future<bool> renameEntity(FileSystemEntity entity, String newName) async {
+    try {
+      final parentPath = entity.parent.path;
+      final newPath = '$parentPath/$newName';
+
+      if (entity is File) {
+        await entity.rename(newPath);
+      } else if (entity is Directory) {
+        await entity.rename(newPath);
+      }
+
+      await refresh();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Error al renombrar: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteEntity(FileSystemEntity entity) async {
+    try {
+      if (entity is File) {
+        await entity.delete();
+      } else if (entity is Directory) {
+        await entity.delete(recursive: true);
+      }
+      await refresh();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Error al eliminar: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> copyEntity(FileSystemEntity entity, String destPath) async {
+    try {
+      final name = entity.path.split('/').last;
+      if (entity is File) {
+        await entity.copy('$destPath/$name');
+      }
+      await refresh();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Error al copiar: $e';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> createFolder(String name) async {
+    if (currentDirectory == null) return false;
+    try {
+      // Verificar que estamos en un directorio donde tenemos acceso
+      final newDir = Directory('${currentDirectory!.path}/$name');
+      await newDir.create();
+      await refresh();
+      return true;
+    } catch (e) {
+      // Si falla por permisos, crear en el directorio interno de la app
+      try {
+        final appDir = await getApplicationDocumentsDirectory();
+        final newDir = Directory('${appDir.path}/$name');
+        await newDir.create();
+        _errorMessage =
+            'Carpeta creada en almacenamiento interno (sin permisos en esta ubicación)';
+        notifyListeners();
+        return true;
+      } catch (e2) {
+        _errorMessage = 'Error al crear carpeta: $e2';
+        notifyListeners();
+        return false;
+      }
+    }
+  }
+
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
+  }
 }
 
 enum SortMode { nameAsc, nameDesc, sizeDesc, dateDesc }
