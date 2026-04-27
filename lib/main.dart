@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'core/theme/theme_provider.dart';
+import 'features/favorites/domain/favorite_model.dart';
+import 'features/recents/domain/recent_model.dart';
+import 'features/explorer/presentation/explorer_provider.dart';
 import 'features/explorer/presentation/screens/explorer_screen.dart';
 import 'features/favorites/presentation/screens/favorites_screen.dart';
 import 'features/recents/presentation/screens/recents_screen.dart';
@@ -10,12 +13,20 @@ import 'features/recents/presentation/screens/recents_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox('favorites');
-  await Hive.openBox('recents');
+
+  Hive.registerAdapter(FavoriteModelAdapter());
+  Hive.registerAdapter(RecentModelAdapter());
+
+  // Solo abrir UNA vez con el tipo correcto
+  await Hive.openBox<FavoriteModel>('favorites');
+  await Hive.openBox<RecentModel>('recents');
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => ExplorerProvider()),
+      ],
       child: const MyApp(),
     ),
   );
